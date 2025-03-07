@@ -54,7 +54,7 @@ def list_cameras():
 
 camera_devices = list_cameras()
 print("Choose a camera: ")
-for i, device in enumerate(camera_devices):
+for i, device in enumerate(reversed(camera_devices)):
     print(f"{i}: {device}")
 camera_choice = int(input("Enter the camera number: "))
 print(f"Using camera: {camera_devices[camera_choice]}")

@@ -55,8 +55,7 @@ print("Choose a camera: ")
 for i, device in enumerate(camera_devices):
     print(f"{i}: {device}")
 camera_choice = int(input("Enter the camera number: "))
-print(f"Using camera: {camera_devices[camera_choice]}")
-camera_device = camera_devices[camera_choice]
+camera_device = list(camera_devices)[camera_choice]
 print(f"Using camera: {camera_device}")
 
 # Add resolution selection
@@ -107,7 +106,7 @@ if bg_mode == 2:
     b = int(input("Enter blue component (0-255): "))
     background_color = (b, g, r)  # OpenCV uses BGR
 elif bg_mode == 3:
-    # Transparent mode - will show body shape in green with transparent background
+    # Transparent mode - will show transparent bodies with black background
     background_color = None  # No background color
 else:
     background_color = (0, 255, 0) if bg_mode == 0 else (255, 0, 0)
@@ -218,17 +217,13 @@ while (True):
         mask_3channel = cv2.cvtColor(combined_mask, cv2.COLOR_GRAY2BGR) / 255.0
 
         if bg_mode == 3:  # Transparent mode
-            # Create output with only green bodies and transparency
+            # Create output with black background and transparent bodies
             frame_transparent = np.zeros(
                 (frame.shape[0], frame.shape[1], 4), dtype=np.uint8)
-            green_bodies = np.zeros_like(frame)
-            green_bodies[:, :] = [0, 255, 0]  # BGR green
 
-            # Set the RGB channels using the mask
-            frame_transparent[:, :, :3] = green_bodies * mask_3channel
-
-            # Set the alpha channel based on the mask
-            frame_transparent[:, :, 3] = combined_mask
+            # Set the alpha channel to be transparent where the mask is
+            # (0 for body areas, 255 for background)
+            frame_transparent[:, :, 3] = 255 - combined_mask
 
             # Use this as our frame for display
             frame = frame_transparent
@@ -240,9 +235,10 @@ while (True):
     else:
         # No person detected
         if bg_mode == 3:
-            # Create a fully transparent frame (all zeros in RGBA)
+            # Create a black frame with full alpha (opaque black)
             frame = np.zeros(
                 (frame.shape[0], frame.shape[1], 4), dtype=np.uint8)
+            frame[:, :, 3] = 255  # Full alpha for background
         else:
             # Use the default background color for the entire frame
             frame = np.full_like(frame, background_color)
@@ -317,17 +313,16 @@ while (True):
 
     # Handle displaying transparent images properly
     if bg_mode == 3:
-        # Create a white background for display purposes only
-        display_frame = np.ones(
-            (frame.shape[0], frame.shape[1], 3), dtype=np.uint8) * 255
+        # Create a black background for display purposes
+        display_frame = np.zeros(
+            (frame.shape[0], frame.shape[1], 3), dtype=np.uint8)
 
-        # Use alpha channel to blend
+        # Use alpha channel to determine where to show the background
         alpha = frame[:, :, 3:4] / 255.0
-        rgb = frame[:, :, :3]
 
-        # Blend RGB channels with white background
-        display_frame = (rgb * alpha + display_frame *
-                         (1.0 - alpha)).astype(np.uint8)
+        # Since we want bodies to be transparent (no RGB content),
+        # just use the alpha to determine what to show
+        display_frame = (display_frame * alpha).astype(np.uint8)
         cv2.imshow('frame', display_frame)
     else:
         cv2.imshow('frame', frame)
