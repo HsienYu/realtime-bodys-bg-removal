@@ -9,6 +9,8 @@ import numpy as np
 from ultralytics import YOLO
 import subprocess
 from syphon_utils import create_syphon_server, publish_frame_to_syphon, cleanup_syphon
+import threading
+from collections import deque
 
 # YOLO model selection
 list_model = [
@@ -133,14 +135,28 @@ frame_id = 0
 show_indicators = True  # New toggle variable for text indicators visibility
 include_area_between = True  # New toggle variable for including area between bodies
 
-# Main loop
-while True:
-    frame_id += 1
+# Performance optimization variables
+skip_frames = 0  # How many frames to skip inference on
+process_every_n_frames = 1  # Process only every n frames
+last_key_time = time.time()  # Track last key press time
+key_press_buffer = deque(maxlen=5)  # Buffer for key presses
+fps_values = deque(maxlen=30)  # Track recent FPS values
+processing_times = deque(maxlen=30)  # Track processing times
 
-    # Capture frame
-    ret, frame = vid.read()
-    if not ret:
-        break
+# Thread-safe variables
+is_running = True
+current_frame = None
+processed_frame = None
+frame_ready = threading.Event()
+processing_done = threading.Event()
+
+# Lock for thread synchronization
+frame_lock = threading.Lock()
+
+
+def process_frame(frame, process_id):
+    """Process a single frame - this is the computationally heavy part"""
+    start_proc_time = time.time()
 
     # Model inference
     results = model.predict(frame, stream=True, conf=conf_threshold)
@@ -201,62 +217,188 @@ while True:
             # Make everything black by default (already zeros)
 
             # Set alpha channel: 0 for bodies (transparent), 255 for background (opaque)
-            # The logic is inverted compared to what you might expect:
-            # - combined_mask has 255 where bodies are, 0 elsewhere
-            # - For alpha, we want 0 where bodies are, 255 elsewhere
-            inverted_mask = cv2.bitwise_not(
-                combined_mask)  # 255 - combined_mask
+            inverted_mask = cv2.bitwise_not(combined_mask)
 
             # Assign the alpha channel
             frame_transparent[:, :, 3] = inverted_mask
 
             # Use this as our frame
-            frame = frame_transparent
+            output_frame = frame_transparent
         else:
             # Standard solid background mode
             colored_bg = np.full_like(frame, background_color)
-            frame = frame * mask_3channel + colored_bg * (1 - mask_3channel)
-            frame = frame.astype(np.uint8)
+            output_frame = frame * mask_3channel + \
+                colored_bg * (1 - mask_3channel)
+            output_frame = output_frame.astype(np.uint8)
     else:
         # No person detected
         if bg_mode == 3:
             # Create a fully black opaque frame (not transparent)
-            frame = np.zeros(
+            output_frame = np.zeros(
                 (frame.shape[0], frame.shape[1], 4), dtype=np.uint8)
             # Set alpha to 255 (fully opaque)
-            frame[:, :, 3] = 255
+            output_frame[:, :, 3] = 255
         else:
             # Use the default background color for the entire frame
-            frame = np.full_like(frame, background_color)
+            output_frame = np.full_like(frame, background_color)
+
+    # Flip horizontally for natural view
+    output_frame = cv2.flip(output_frame, 1)
+
+    proc_time = time.time() - start_proc_time
+    processing_times.append(proc_time)
+
+    return output_frame, person_detected, proc_time
+
+
+def processing_thread():
+    """Thread function for frame processing"""
+    global processed_frame, current_frame
+    local_frame_id = 0
+
+    while is_running:
+        # Wait for a new frame to be ready
+        if frame_ready.wait(timeout=0.1):
+            frame_ready.clear()  # Reset event
+
+            # Get the frame to process with lock protection
+            with frame_lock:
+                if current_frame is None:
+                    processing_done.set()
+                    continue
+                frame_to_process = current_frame.copy()
+
+            # Only process certain frames to avoid overloading
+            if local_frame_id % process_every_n_frames == 0:
+                try:
+                    # Process the frame
+                    output_frame, detected, proc_time = process_frame(
+                        frame_to_process, local_frame_id)
+
+                    # Store the processed frame with lock protection
+                    with frame_lock:
+                        processed_frame = (output_frame, detected, proc_time)
+                except Exception as e:
+                    print(f"Error in processing thread: {e}")
+
+            local_frame_id += 1
+            processing_done.set()  # Signal that processing is done
+
+
+def handle_keys(key):
+    """Handle keyboard inputs separately for more responsive hotkeys"""
+    global show_indicators, include_area_between, is_running, process_every_n_frames, skip_frames
+
+    if key == -1:  # No key pressed
+        return False
+
+    key = key & 0xFF  # Get the ASCII value
+
+    if key == ord('q'):
+        print("Quit command received")
+        is_running = False
+        return True
+    elif key == ord('h'):
+        show_indicators = not show_indicators
+        print(f"Indicators {'hidden' if not show_indicators else 'shown'}")
+    elif key == ord('b'):
+        include_area_between = not include_area_between
+        print(
+            f"Include area between bodies: {'On' if include_area_between else 'Off'}")
+    elif key == ord('+') or key == ord('='):
+        process_every_n_frames = max(1, process_every_n_frames - 1)
+        print(
+            f"Processing frequency increased: Every {process_every_n_frames} frame(s)")
+    elif key == ord('-'):
+        process_every_n_frames += 1
+        print(
+            f"Processing frequency decreased: Every {process_every_n_frames} frame(s)")
+
+    return False
+
+
+# Start the processing thread
+processing_thread = threading.Thread(target=processing_thread)
+processing_thread.daemon = True
+processing_thread.start()
+
+# Main loop
+while is_running:
+    frame_start_time = time.time()
+    frame_id += 1
+
+    # Capture frame
+    ret, frame = vid.read()
+    if not ret:
+        break
+
+    # Check for key presses more frequently for responsiveness
+    key = cv2.waitKey(1)
+    if key != -1:  # If a key was pressed
+        key_press_buffer.append(key)
+        last_key_time = time.time()
+
+    # Process any pending key presses
+    if key_press_buffer:
+        key = key_press_buffer.popleft()
+        if handle_keys(key):
+            break  # Exit if handle_keys returns True (quit)
+
+    # Pass the new frame to the processing thread
+    with frame_lock:
+        current_frame = frame.copy()
+
+    # Signal that a new frame is ready
+    frame_ready.set()
+
+    # Wait until frame is processed or timeout (ensures UI responsiveness)
+    processing_done.wait(timeout=1/30)  # Limit to 30fps for UI
+    processing_done.clear()
+
+    # Get the processed frame if available
+    display_frame = None
+    person_detected = False
+    proc_time = 0
+
+    with frame_lock:
+        if processed_frame is not None:
+            display_frame, person_detected, proc_time = processed_frame
+
+    # Use the processed frame or the last one if not available
+    if display_frame is None:
+        # If no processed frame is ready, just show the raw frame
+        display_frame = cv2.flip(frame, 1)
 
     # Calculate FPS
     elapsed_time = time.time() - start_time
     fps = frame_id / elapsed_time
+    fps_values.append(fps)
+    avg_fps = sum(fps_values) / len(fps_values)
+    avg_proc_time = sum(processing_times) / \
+        max(1, len(processing_times)) * 1000  # ms
 
-    # Flip horizontally for natural view
-    frame = cv2.flip(frame, 1)
+    # Add information overlay
+    if display_frame is not None and show_indicators:
+        if bg_mode != 3:
+            cv2.putText(display_frame, f"FPS: {round(avg_fps, 1)} (Proc: {round(avg_proc_time, 1)}ms)",
+                        (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
+            cv2.putText(display_frame, f"Confidence: {conf_threshold}", (10, 90),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
+            cv2.putText(display_frame, f"Person detected: {'Yes' if person_detected else 'No'}",
+                        (10, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
+            cv2.putText(display_frame, f"Include area between: {'On' if include_area_between else 'Off'}",
+                        (10, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
+            cv2.putText(display_frame, f"Process every: {process_every_n_frames} frames (+/- to adjust)",
+                        (10, 210), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
+            cv2.putText(display_frame, "Press Q to quit, H to hide info, B to toggle area mode",
+                        (10, 250), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
+        elif bg_mode == 3 and show_indicators:
+            # Put text in a position that's less likely to interfere with the content
+            cv2.putText(display_frame, f"FPS: {round(avg_fps, 1)} | Area: {'On' if include_area_between else 'Off'}",
+                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2)
 
-    # Add information overlay (only if not transparent)
-    if bg_mode != 3 and show_indicators:  # Modified to check show_indicators
-        cv2.putText(frame, f"FPS: {round(fps, 2)}", (10, 50),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
-        cv2.putText(frame, f"Confidence: {conf_threshold}", (10, 90),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
-        cv2.putText(frame, f"Person detected: {'Yes' if person_detected else 'No'}",
-                    (10, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
-        cv2.putText(frame, f"Include area between: {'On' if include_area_between else 'Off'}", (10, 170),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
-        cv2.putText(frame, "Press Q to quit, H to hide info, B to toggle area mode", (10, 210),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
-
-    # Add minimal indicator even in transparent mode
-    elif bg_mode == 3 and show_indicators:
-        # Put text in a position that's less likely to interfere with the content
-        cv2.putText(frame, f"Include area: {'On' if include_area_between else 'Off'}",
-                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2)
-
-    # Publish to Syphon using the method from mask.py
-    if use_syphon and syphon_server and mtl_device:
+    # Publish to Syphon
+    if use_syphon and syphon_server and mtl_device and display_frame is not None:
         # Only log every 100 frames to avoid console spam
         if frame_id % 100 == 0:
             print(f"Publishing frame {frame_id} to Syphon")
@@ -265,60 +407,54 @@ while True:
         if bg_mode == 3:
             # For transparent mode, we need to handle RGBA
             success = publish_frame_to_syphon(
-                frame, syphon_server, mtl_device, is_rgba=True)
+                display_frame, syphon_server, mtl_device, is_rgba=True)
         else:
-            success = publish_frame_to_syphon(frame, syphon_server, mtl_device)
+            success = publish_frame_to_syphon(
+                display_frame, syphon_server, mtl_device)
 
         if not success and frame_id % 30 == 0:  # Only log failures occasionally
             print("Failed to publish to Syphon")
 
     # Display the frame
-    if bg_mode == 3:
+    if bg_mode == 3 and display_frame is not None:
         # For display purposes, create a preview with checkered background
         # to make transparent areas visible
         checker_size = 20
-        display_frame = np.zeros(
-            (frame.shape[0], frame.shape[1], 3), dtype=np.uint8)
+        checker_frame = np.zeros(
+            (display_frame.shape[0], display_frame.shape[1], 3), dtype=np.uint8)
 
-        # Create checker pattern
-        for i in range(0, frame.shape[0], checker_size * 2):
-            for j in range(0, frame.shape[1], checker_size * 2):
-                # White squares
-                display_frame[i:min(i+checker_size, frame.shape[0]),
-                              j:min(j+checker_size, frame.shape[1])] = [255, 255, 255]
-                if j+checker_size < frame.shape[1] and i+checker_size < frame.shape[0]:
-                    display_frame[i+checker_size:min(i+checker_size*2, frame.shape[0]),
-                                  j+checker_size:min(j+checker_size*2, frame.shape[1])] = [255, 255, 255]
+        # Create checker pattern (optimized)
+        checker_pattern = np.zeros(
+            (checker_size*2, checker_size*2, 3), dtype=np.uint8)
+        checker_pattern[:checker_size, :checker_size] = [255, 255, 255]
+        checker_pattern[checker_size:, checker_size:] = [255, 255, 255]
+
+        # Tile the pattern (faster than nested loops)
+        for i in range(0, display_frame.shape[0], checker_size*2):
+            for j in range(0, display_frame.shape[1], checker_size*2):
+                h = min(checker_size*2, display_frame.shape[0]-i)
+                w = min(checker_size*2, display_frame.shape[1]-j)
+                checker_frame[i:i+h, j:j+w] = checker_pattern[:h, :w]
 
         # Apply alpha blending
-        alpha = frame[:, :, 3:4] / 255.0
-
-        # Black pixels (where RGB is 0,0,0) with full alpha (255)
-        # should replace the checker pattern
-        display_frame = display_frame * (1 - alpha) + (frame[:, :, :3] * alpha)
-        display_frame = display_frame.astype(np.uint8)
-
+        if display_frame.shape[2] == 4:  # Make sure we have an alpha channel
+            alpha = display_frame[:, :, 3:4] / 255.0
+            display_frame_rgb = display_frame[:, :, :3]
+            # Black pixels with full alpha replace checker pattern
+            preview = checker_frame * (1 - alpha) + (display_frame_rgb * alpha)
+            preview = preview.astype(np.uint8)
+            cv2.imshow('Person Background Removal', preview)
+    elif display_frame is not None:
         cv2.imshow('Person Background Removal', display_frame)
-    else:
-        cv2.imshow('Person Background Removal', frame)
 
-    # Improved keyboard handling for more responsive hotkeys
-    # Increased wait time from 1ms to 5ms for better key capture
-    key = cv2.waitKey(5) & 0xFF
+    # Frame rate control - sleep if we're processing too fast
+    frame_time = time.time() - frame_start_time
+    if frame_time < 1/60:  # Cap at 60fps for efficiency
+        time.sleep(1/60 - frame_time)
 
-    # Process key presses - use elif structure for more efficient handling
-    if key == ord('q'):
-        print("Quit command received")
-        break
-    elif key == ord('h'):
-        show_indicators = not show_indicators
-        print(f"Indicators {'hidden' if not show_indicators else 'shown'}")
-    elif key == ord('b'):
-        include_area_between = not include_area_between
-        print(
-            f"Include area between bodies: {'On' if include_area_between else 'Off'}")
-
-    # Remove the extra cv2.pollKey() call as it's not needed and might cause issues
+# Stop the processing thread
+is_running = False
+processing_thread.join(timeout=1.0)
 
 # Cleanup
 vid.release()
