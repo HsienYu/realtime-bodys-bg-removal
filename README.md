@@ -1,201 +1,128 @@
-# Real-time Person Background Removal
+# Realtime Body Background Removal
 
-A powerful real-time video processing application that uses YOLOv8 to detect people and remove or replace their backgrounds. Designed for streamers, content creators, and video conferencing users who need professional-looking video without a physical green screen.
+A Python application that uses YOLOv8 segmentation models to remove backgrounds from video in real-time, providing various output options including green screen, custom backgrounds, and transparency for streaming and virtual camera applications.
 
-## Table of Contents
-- [Features](#features)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Usage Guide](#usage-guide)
-  - [Configuration Options](#configuration-options)
-  - [Keyboard Controls](#keyboard-controls)
-- [Output Methods](#output-methods)
-  - [Syphon Integration](#syphon-integration)
-  - [Alternative Output Methods](#alternative-output-methods)
-- [Performance Optimization](#performance-optimization)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [License](#license)
-- [Acknowledgments](#acknowledgments)
 
 ## Features
 
-- **Accurate Person Detection & Segmentation**: Leverages YOLOv8's advanced computer vision capabilities to precisely identify and isolate people in the frame
-- **Real-Time Processing**: Optimized algorithms ensure low-latency processing suitable for live applications
-- **Flexible Background Options**:
-  - Complete background removal (transparent)
-  - Static image replacement
-  - Video background replacement
-  - Blur effect option
-- **Multiple Output Methods**: 
-  - Standard window display for direct viewing
-  - Syphon server output for integration with streaming software (macOS)
-  - Virtual camera integration for video conferencing
-- **Customizable Configuration**: Adjust resolution, processing parameters, and model selection to balance quality and performance
+- **Real-time processing**: Optimized for smooth real-time video performance
+- **Multiple YOLOv8 models**: Choose from different model sizes based on your hardware capabilities
+- **ONNX support**: Option to convert and use ONNX models for potentially better performance
+- **Edge feathering**: Smooth edges with adjustable feathering for professional-looking results
+- **Multiple output modes**:
+  - Green screen
+  - Blue screen
+  - Custom color
+  - Transparent background (alpha channel)
+- **Multi-person handling**: Intelligently handles multiple people with option to include/exclude space between bodies
+- **Threaded processing**: Uses a separate processing thread to maintain UI responsiveness
+- **Syphon integration**: Output to other applications on macOS like OBS Studio using Syphon
+- **Performance tuning**: Adjustable processing frequency for balancing quality and performance
 
 ## Requirements
 
-- Python 3.10 or newer
-- Operating System: macOS, Windows, or Linux
-- Webcam or other video input source
-- For GPU acceleration: CUDA-compatible NVIDIA GPU (recommended)
-- For Syphon output: macOS only
+- Python 3.7+
+- macOS (for Syphon support)
+- Webcam or other camera input
+- Packages listed in requirements.txt
 
 ## Installation
 
-1. **Clone the repository:**
+1. Clone this repository:
+
    ```bash
    git clone https://github.com/yourusername/realtime-bodys-bg-removal.git
    cd realtime-bodys-bg-removal
    ```
 
-2. **Create a conda environment:**
-   ```bash
-   conda create -n background-removal python=3.10
-   conda activate background-removal
-   ```
+2. Install required packages:
 
-3. **Install required packages:**
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **For Syphon support (macOS only):**
-   ```bash
-   pip install syphon-python
-   ```
+3. For Syphon support, see [SYPHON_SETUP.md](SYPHON_SETUP.md) for detailed instructions.
 
-## Quick Start
+## Usage
+
+Run the application with:
 
 ```bash
-# Basic usage with default settings
-python main.py
-
-# With custom settings
-python main.py --model yolov8n-seg --resolution 1280x720 --background path/to/image.jpg
+python app_with_contours_feather.py
 ```
 
-## Usage Guide
+Follow the interactive prompts to configure the application:
 
-### Configuration Options
+1. **Model selection**: 
+   - Choose a YOLOv8 segmentation model (0-4, smaller number = faster but less accurate)
 
-#### Model Selection
-Choose from different YOLOv8 segmentation models based on your performance needs:
+2. **ONNX option**:
+   - Enter 1 to use ONNX, 0 to use standard PyTorch model
 
-| Model | Speed | Accuracy | Memory Usage | Recommended Hardware |
-|-------|-------|----------|--------------|---------------------|
-| yolov8n-seg | Fastest | Lower | ~2GB | Integrated GPU |
-| yolov8s-seg | Medium | Medium | ~2.5GB | Mid-range GPU |
-| yolov8m-seg | Slower | Higher | ~5GB | Good GPU |
-| yolov8l-seg | Slowest | Highest | ~8GB | High-end GPU |
+3. **Camera selection**:
+   - Select from available cameras
 
-Example: `--model yolov8s-seg`
+4. **Resolution**:
+   - Choose from preset resolutions (HD, Full HD)
 
-#### Resolution Options
-Set your preferred resolution to balance quality and performance:
+5. **Detection confidence**:
+   - Set the confidence threshold (0.1-0.9, recommended 0.3-0.5)
+   - Lower values detect bodies at greater distances but may increase false positives
 
-- 640x480 (Basic, fastest)
-- 1280x720 (16:9 HD)
-- 1280x800 (16:10)
-- 1920x1080 (16:9 Full HD)
-- 1920x1200 (16:10)
+6. **Edge feathering**:
+   - Set the amount of edge feathering (0-20)
+   - Higher values create smoother transitions at edges
+   - 0 for sharp edges, 10 recommended for natural look
 
-Example: `--resolution 1280x720`
+7. **Background mode**:
+   - 0: Green screen
+   - 1: Blue screen
+   - 2: Custom color (you'll be prompted for RGB values)
+   - 3: Transparent background (outputs RGBA with transparent bodies)
 
-#### Background Options
-Specify what replaces the removed background:
+8. **Syphon output**:
+   - Enable Syphon to output to other applications (macOS only)
 
-- Transparent: `--background none`
-- Solid color: `--background "#00FF00"` (green)
-- Image file: `--background path/to/image.jpg`
-- Video file: `--background path/to/video.mp4`
-- Blur: `--background blur --blur-strength 15`
+## Keyboard Controls
 
-### Keyboard Controls
+While the application is running:
 
-During application runtime:
-- `Q` or `ESC`: Quit application
-- `S`: Save current frame as image
-- `B`: Cycle between configured background options
-- `M`: Toggle model visualization mode (shows detection boundaries)
-- `+` / `-`: Increase/decrease detection confidence threshold
-- `F`: Toggle fullscreen mode
+- **Q**: Quit the application
+- **H**: Toggle display of information overlay
+- **B**: Toggle inclusion of area between multiple bodies
+- **+/-**: Increase/decrease processing frequency (lower frequency = higher performance)
 
-## Output Methods
+## Performance Tips
 
-### Syphon Integration
+- Use smaller models (yolov8n-seg, yolov8s-seg) for better performance
+- Enable ONNX for potential performance gains
+- Use the processing frequency control (+/-) to balance quality and performance
+- Run at lower resolutions for better framerates
 
-Syphon allows you to send your processed video to other applications on macOS:
+## Syphon Integration
 
-1. Start the application with: `python main.py --output syphon`
-2. In OBS Studio:
-   - Add a "Syphon Client" source
-   - Select the "BackgroundRemoval" Syphon server
-   - Configure as needed in OBS
+When Syphon is enabled, the output can be used in applications like OBS Studio:
 
-### Alternative Output Methods
+1. Install the obs-syphon plugin in OBS
+2. Add a Syphon Client source
+3. Select "PersonBackgroundRemoval" as the source
+4. For transparent mode, ensure "Allow Transparency" is checked
 
-#### Virtual Camera
-```bash
-# Start with virtual camera output
-python main.py --output virtual-camera
-```
-Then select "Background Removal Camera" in your video conferencing app
-
-#### Screen Capture
-If direct integration isn't working:
-1. Run the application in window mode
-2. Use OBS or similar software to capture the application window
-3. Add post-processing as needed
-
-## Performance Optimization
-
-- **For better speed**: Use `--model yolov8n-seg --resolution 640x480`
-- **For better quality**: Use `--model yolov8m-seg --resolution 1280x720`
-- **For GPU acceleration**: Use `--device cuda` (requires NVIDIA GPU with CUDA)
-- **For CPU-only**: Use `--device cpu` (slower but works on all systems)
+See [SYPHON_SETUP.md](SYPHON_SETUP.md) for detailed instructions.
 
 ## Troubleshooting
 
-### Common Issues
-
-1. **Metal Device Errors (macOS)**:
-   - Try: `python main.py --device cpu` to bypass GPU
-   - Ensure macOS is updated to latest version
-
-2. **Empty/Black Frames in OBS**:
-   - Verify the correct Syphon server is selected
-   - Try restarting both the application and OBS
-   - Check terminal for error messages
-
-3. **Performance Issues**:
-   - Select a lighter model: `--model yolov8n-seg`
-   - Reduce resolution: `--resolution 640x480`
-   - Close other GPU-intensive applications
-   - Try `--optimization speed` flag to prioritize performance
-
-4. **Camera Access Problems**:
-   - Check system permissions for camera access
-   - Try specifying a different camera: `--camera 1` (try 0, 1, 2, etc.)
-   - Make sure no other application is using the camera
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request or open Issues to report bugs and request features.
-
-1. Fork the repository
-2. Create your feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add some amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
+- **Low FPS**: Try a smaller model, lower resolution, or increase the processing interval
+- **Poor segmentation**: Try a larger model (yolov8m-seg, yolov8l-seg) or adjust confidence
+- **Edge artifacts**: Increase the feathering amount for smoother edges
+- **Syphon not working**: Ensure you have the correct plugins installed in the receiving application
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+0x5a@pimiya.rocks
 
-## Acknowledgments
+## Acknowledgements
 
-- YOLOv8 by Ultralytics for the excellent object detection models
-- Syphon Project for the macOS inter-application video sharing framework
-- Contributors and users who have provided valuable feedback and improvements
+- [Ultralytics YOLOv8](https://github.com/ultralytics/ultralytics)
+- [OpenCV](https://opencv.org/)
+- [Syphon Project](https://syphon.github.io/)
