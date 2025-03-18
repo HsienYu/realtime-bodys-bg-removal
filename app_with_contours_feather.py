@@ -137,7 +137,7 @@ kernel = np.ones((5, 5), np.uint8)
 # Timing variables
 start_time = time.time()
 frame_id = 0
-show_indicators = True  # New toggle variable for text indicators visibility
+show_indicators = False  # New toggle variable for text indicators visibility
 include_area_between = True  # New toggle variable for including area between bodies
 
 # Performance optimization variables
