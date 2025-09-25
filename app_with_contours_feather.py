@@ -24,9 +24,11 @@ list_model = [
 print("Choose a model: ")
 for i, model in enumerate(list_model):
     print(f"{i}: {model}")
-model_choice = int(input("Enter the model number: "))
+model_input = input("Enter the model number [default: 0]: ").strip()
+model_choice = int(model_input) if model_input else 0
 
-is_onnx = bool(int(input("Do you want to use ONNX? (0/1): ")))
+onnx_input = input("Do you want to use ONNX? (0/1) [default: 0]: ").strip()
+is_onnx = bool(int(onnx_input)) if onnx_input else False
 
 model = YOLO(list_model[model_choice])
 
@@ -58,7 +60,8 @@ camera_devices = list_cameras()
 print("Choose a camera: ")
 for i, device in enumerate(camera_devices):
     print(f"{i}: {device}")
-camera_choice = int(input("Enter the camera number: "))
+camera_input = input("Enter the camera number [default: 0]: ").strip()
+camera_choice = int(camera_input) if camera_input else 0
 print(f"Using camera: {camera_devices[camera_choice]}")
 
 # Resolution selection
@@ -73,7 +76,8 @@ resolutions = [
 for i, res in enumerate(resolutions):
     print(f"{i}: {res['name']}")
 
-resolution_choice = int(input("Enter resolution number: "))
+resolution_input = input("Enter resolution number [default: 0]: ").strip()
+resolution_choice = int(resolution_input) if resolution_input else 0
 frame_width = resolutions[resolution_choice]["width"]
 frame_height = resolutions[resolution_choice]["height"]
 
@@ -92,31 +96,47 @@ else:
     person_class_id = yolo_classes.index("person")
 
 # Detection confidence
-conf_threshold = float(
-    input("Enter detection confidence threshold (0.1-0.9, recommended 0.3-0.5): "))
+conf_input = input(
+    "Enter detection confidence threshold (0.1-0.9, recommended 0.3-0.5) [default: 0.5]: ").strip()
+conf_threshold = float(conf_input) if conf_input else 0.5
 conf_threshold = max(0.1, min(0.9, conf_threshold))
 
 # Feather amount selection for edges
-feather_amount = int(input(
-    "Enter edge feathering amount (0-20, 0 for sharp edges, 10 recommended): "))
+feather_input = input(
+    "Enter edge feathering amount (0-20, 0 for sharp edges, 10 recommended) [default: 10]: ").strip()
+feather_amount = int(feather_input) if feather_input else 10
 feather_amount = max(0, min(20, feather_amount))
 
-# Background color selection with transparent option
-bg_mode = int(
-    input("Choose background mode (0: Green, 1: Blue, 2: Custom, 3: Transparent Body): "))
-if bg_mode == 2:
-    r = int(input("Enter red component (0-255): "))
-    g = int(input("Enter green component (0-255): "))
-    b = int(input("Enter blue component (0-255): "))
-    background_color = (b, g, r)  # OpenCV uses BGR
-elif bg_mode == 3:
-    # Transparent mode - will show body shape in green with transparent background
-    background_color = None  # No background color
+# Background mode selection with consistent options
+print("\nChoose background mode:")
+print("Keep Body modes (show person, replace background):")
+print("  0: Keep Body - Green Background")
+print("  1: Keep Body - Blue Background")
+print("  2: Keep Body - Transparent Background")
+print("\nRemove Body modes (hide person, show background):")
+print("  3: Remove Body - Green Fill in Body Area")
+print("  4: Remove Body - Blue Fill in Body Area")
+print("  5: Remove Body - Transparent Body Area")
+bg_input = input(
+    "Choose background mode [default: 0]: ").strip()
+bg_mode = int(bg_input) if bg_input else 0
+
+# Handle background color for different modes
+if bg_mode == 2 or bg_mode == 5:
+    # Transparent modes - no background color needed
+    background_color = None
 else:
-    background_color = (0, 255, 0) if bg_mode == 0 else (255, 0, 0)
+    # Set colors for green/blue modes
+    if bg_mode == 0 or bg_mode == 3:  # Green (Keep Body or Remove Body)
+        background_color = (0, 255, 0)  # Green in BGR
+    elif bg_mode == 1 or bg_mode == 4:  # Blue (Keep Body or Remove Body)
+        background_color = (255, 0, 0)  # Blue in BGR format (B, G, R)
+    else:
+        background_color = (0, 255, 0)  # Default to green
 
 # Initialize Syphon using the working implementation from mask.py
-use_syphon = bool(int(input("Do you want to enable Syphon output? (0/1): ")))
+syphon_input = input("Do you want to enable Syphon output? (0/1) [default: 0]: ").strip()
+use_syphon = bool(int(syphon_input)) if syphon_input else False
 syphon_server, mtl_device = None, None
 
 if use_syphon:
@@ -233,37 +253,64 @@ def process_frame(frame, process_id):
         # Create mask channels for blending
         mask_3channel = cv2.cvtColor(combined_mask, cv2.COLOR_GRAY2BGR) / 255.0
 
-        if bg_mode == 3:  # Transparent mode
-            # Create an RGBA image
-            frame_transparent = np.zeros(
-                (frame.shape[0], frame.shape[1], 4), dtype=np.uint8)
-
-            # Make everything black by default (already zeros)
-
-            # Set alpha channel: 0 for bodies (transparent), 255 for background (opaque)
-            inverted_mask = cv2.bitwise_not(combined_mask)
-
-            # Assign the alpha channel
-            frame_transparent[:, :, 3] = inverted_mask
-
-            # Use this as our frame
-            output_frame = frame_transparent
-        else:
-            # Standard solid background mode
-            colored_bg = np.full_like(frame, background_color)
-            output_frame = frame * mask_3channel + \
-                colored_bg * (1 - mask_3channel)
-            output_frame = output_frame.astype(np.uint8)
+        if bg_mode <= 2:  # Keep Body modes (0: Green, 1: Blue, 2: Transparent)
+            if bg_mode == 2:  # Keep Body - Transparent Background
+                # Create an RGBA image
+                frame_transparent = np.zeros(
+                    (frame.shape[0], frame.shape[1], 4), dtype=np.uint8)
+                
+                # Copy the person (RGB channels)
+                frame_transparent[:, :, :3] = (frame * mask_3channel).astype(np.uint8)
+                
+                # Set alpha channel: 255 for person (opaque), 0 for background (transparent)
+                frame_transparent[:, :, 3] = combined_mask
+                
+                output_frame = frame_transparent
+            else:  # Keep Body - Green (0) or Blue (1) Background
+                colored_bg = np.full_like(frame, background_color)
+                output_frame = frame * mask_3channel + colored_bg * (1 - mask_3channel)
+                output_frame = output_frame.astype(np.uint8)
+        
+        else:  # Remove Body modes (3: Green, 4: Blue, 5: Transparent)
+            # Invert the mask to show everything EXCEPT the body
+            inverted_mask_3channel = 1 - mask_3channel
+            
+            if bg_mode == 5:  # Remove Body - Transparent Body Area
+                # Create an RGBA image
+                frame_transparent = np.zeros(
+                    (frame.shape[0], frame.shape[1], 4), dtype=np.uint8)
+                
+                # Copy the background (RGB channels)
+                frame_transparent[:, :, :3] = (frame * inverted_mask_3channel).astype(np.uint8)
+                
+                # Set alpha channel: 255 for background (opaque), 0 for person area (transparent)
+                inverted_mask = cv2.bitwise_not(combined_mask)
+                frame_transparent[:, :, 3] = inverted_mask
+                
+                output_frame = frame_transparent
+            else:  # Remove Body - Green (3) or Blue (4) Fill
+                # Show original background, fill body areas with color
+                color_fill = np.full_like(frame, background_color)
+                output_frame = frame * inverted_mask_3channel + color_fill * mask_3channel
+                output_frame = output_frame.astype(np.uint8)
     else:
         # No person detected
-        if bg_mode == 3:
-            # Create a fully black opaque frame (not transparent)
-            output_frame = np.zeros(
-                (frame.shape[0], frame.shape[1], 4), dtype=np.uint8)
-            # Set alpha to 255 (fully opaque)
-            output_frame[:, :, 3] = 255
+        if bg_mode == 2 or bg_mode == 5:  # Transparent modes
+            # Create a fully opaque frame for transparent modes when no person detected
+            if bg_mode == 2:  # Keep Body Transparent - show nothing (fully transparent)
+                output_frame = np.zeros(
+                    (frame.shape[0], frame.shape[1], 4), dtype=np.uint8)
+                # Alpha channel stays 0 (fully transparent)
+            else:  # Remove Body Transparent - show full background (fully opaque)
+                output_frame = np.zeros(
+                    (frame.shape[0], frame.shape[1], 4), dtype=np.uint8)
+                output_frame[:, :, :3] = frame
+                output_frame[:, :, 3] = 255  # Fully opaque
+        elif bg_mode >= 3:  # Remove Body modes (3: Green, 4: Blue)
+            # No body detected, so show original frame (nothing to remove)
+            output_frame = frame.copy()
         else:
-            # Use the default background color for the entire frame
+            # Keep Body modes (0: Green, 1: Blue) - no body detected, show background color
             output_frame = np.full_like(frame, background_color)
 
     # Flip horizontally for natural view
@@ -309,9 +356,25 @@ def processing_thread():
             processing_done.set()  # Signal that processing is done
 
 
+def update_background_color():
+    """Update background color based on current bg_mode"""
+    global background_color
+    
+    if bg_mode == 2 or bg_mode == 5:
+        # Transparent modes - no background color needed
+        background_color = None
+    else:
+        # Set colors for green/blue modes
+        if bg_mode == 0 or bg_mode == 3:  # Green (Keep Body or Remove Body)
+            background_color = (0, 255, 0)  # Green in BGR
+        elif bg_mode == 1 or bg_mode == 4:  # Blue (Keep Body or Remove Body)
+            background_color = (255, 0, 0)  # Blue in BGR format (B, G, R)
+        else:
+            background_color = (0, 255, 0)  # Default to green
+
 def handle_keys(key):
     """Handle keyboard inputs separately for more responsive hotkeys"""
-    global show_indicators, include_area_between, is_running, process_every_n_frames, skip_frames
+    global show_indicators, include_area_between, is_running, process_every_n_frames, skip_frames, bg_mode
 
     if key == -1:  # No key pressed
         return False
@@ -329,6 +392,36 @@ def handle_keys(key):
         include_area_between = not include_area_between
         print(
             f"Include area between bodies: {'On' if include_area_between else 'Off'}")
+    elif key == ord('m'):
+        # Cycle through all background modes
+        all_modes = [0, 1, 2, 3, 4, 5]  # All 6 modes
+        current_index = bg_mode if bg_mode in all_modes else 0
+        next_index = (current_index + 1) % len(all_modes)
+        bg_mode = all_modes[next_index]
+        update_background_color()  # Update color for new mode
+        mode_names = {
+            0: "Keep Body - Green BG", 1: "Keep Body - Blue BG", 2: "Keep Body - Transparent BG",
+            3: "Remove Body - Green Fill", 4: "Remove Body - Blue Fill", 5: "Remove Body - Transparent Area"
+        }
+        print(f"Switched to mode: {mode_names[bg_mode]}")
+    elif key == ord('k'):
+        # Cycle through Keep Body modes (0: Green, 1: Blue, 2: Transparent)
+        if bg_mode <= 2:
+            bg_mode = (bg_mode + 1) % 3  # Cycle through 0, 1, 2
+        else:
+            bg_mode = 0  # Switch from Remove Body to Keep Body
+        update_background_color()  # Update color for new mode
+        keep_names = {0: "Green", 1: "Blue", 2: "Transparent"}
+        print(f"Keep Body mode: {keep_names[bg_mode]} background")
+    elif key == ord('r'):
+        # Cycle through Remove Body modes (3: Green, 4: Blue, 5: Transparent)
+        if bg_mode >= 3:
+            bg_mode = 3 + ((bg_mode - 3 + 1) % 3)  # Cycle through 3, 4, 5
+        else:
+            bg_mode = 3  # Switch from Keep Body to Remove Body
+        update_background_color()  # Update color for new mode
+        remove_names = {3: "Green Fill", 4: "Blue Fill", 5: "Transparent Area"}
+        print(f"Remove Body mode: {remove_names[bg_mode]}")
     elif key == ord('+') or key == ord('='):
         process_every_n_frames = max(1, process_every_n_frames - 1)
         print(
@@ -340,6 +433,20 @@ def handle_keys(key):
 
     return False
 
+
+# Print startup information
+print("\n=== Real-time Body Background Removal ===")
+print("Keyboard Controls:")
+print("  Q - Quit application")
+print("  H - Hide/show info overlay")
+print("  B - Toggle area between bodies mode")
+print("  M - Cycle through all modes (0→1→2→3→4→5)")
+print("  K - Cycle Keep Body modes (Green→Blue→Transparent)")
+print("  R - Cycle Remove Body modes (Green→Blue→Transparent)")
+print("  +/- - Adjust processing frequency")
+print("\nModes: Keep Body (0-2) | Remove Body (3-5)")
+print("Colors: Green, Blue, Transparent for each category")
+print("\nStarting camera feed...\n")
 
 # Start the processing thread
 processing_thread = threading.Thread(target=processing_thread)
@@ -403,23 +510,35 @@ while is_running:
 
     # Add information overlay
     if display_frame is not None and show_indicators:
-        if bg_mode != 3:
-            cv2.putText(display_frame, f"FPS: {round(avg_fps, 1)} (Proc: {round(avg_proc_time, 1)}ms)",
-                        (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
-            cv2.putText(display_frame, f"Confidence: {conf_threshold}", (10, 90),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
-            cv2.putText(display_frame, f"Person detected: {'Yes' if person_detected else 'No'}",
-                        (10, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
+        # Define mode names for display
+        mode_names = {
+            0: "Keep Body - Green BG",
+            1: "Keep Body - Blue BG", 
+            2: "Keep Body - Transparent BG",
+            3: "Remove Body - Green Fill",
+            4: "Remove Body - Blue Fill",
+            5: "Remove Body - Transparent Area"
+        }
+        
+        if bg_mode not in [2, 5]:  # Standard display modes (not transparent)
+            # Choose text color based on mode for better visibility
+            text_color = (255, 255, 255) if bg_mode >= 3 else (50, 170, 50)
+            
+            cv2.putText(display_frame, f"Mode: {mode_names.get(bg_mode, 'Unknown')} | FPS: {round(avg_fps, 1)} (Proc: {round(avg_proc_time, 1)}ms)",
+                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2)
+            cv2.putText(display_frame, f"Confidence: {conf_threshold} | Person detected: {'Yes' if person_detected else 'No'}",
+                        (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2)
             cv2.putText(display_frame, f"Include area between: {'On' if include_area_between else 'Off'} | Feather: {feather_amount}",
-                        (10, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
+                        (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2)
             cv2.putText(display_frame, f"Process every: {process_every_n_frames} frames (+/- to adjust)",
-                        (10, 210), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
-            cv2.putText(display_frame, "Press Q to quit, H to hide info, B to toggle area mode",
-                        (10, 250), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
-        elif bg_mode == 3 and show_indicators:
+                        (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2)
+            cv2.putText(display_frame, "Q: quit | H: hide info | B: area mode | M: cycle modes | K: keep body | R: remove body",
+                        (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_color, 2)
+        elif bg_mode in [2, 5] and show_indicators:  # Transparent modes
             # Put text in a position that's less likely to interfere with the content
-            cv2.putText(display_frame, f"FPS: {round(avg_fps, 1)} | Area: {'On' if include_area_between else 'Off'} | Feather: {feather_amount}",
-                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2)
+            mode_name = "Keep Body Transparent" if bg_mode == 2 else "Remove Body Transparent"
+            cv2.putText(display_frame, f"{mode_name} | FPS: {round(avg_fps, 1)} | Area: {'On' if include_area_between else 'Off'} | Feather: {feather_amount}",
+                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
     # Publish to Syphon
     if use_syphon and syphon_server and mtl_device and display_frame is not None:
@@ -440,7 +559,7 @@ while is_running:
             print("Failed to publish to Syphon")
 
     # Display the frame
-    if bg_mode == 3 and display_frame is not None:
+    if bg_mode in [2, 5] and display_frame is not None:
         # For display purposes, create a preview with checkered background
         # to make transparent areas visible
         checker_size = 20
