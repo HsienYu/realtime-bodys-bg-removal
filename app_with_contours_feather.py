@@ -9,6 +9,7 @@ import numpy as np
 from ultralytics import YOLO
 import subprocess
 from syphon_utils import create_syphon_server, publish_frame_to_syphon, cleanup_syphon
+from ndi_utils import create_ndi_sender, publish_frame_to_ndi, cleanup_ndi
 import threading
 from collections import deque
 
@@ -150,6 +151,23 @@ if use_syphon:
     else:
         print("Failed to initialize Syphon. Continuing without Syphon output.")
         use_syphon = False
+
+# Initialize NDI
+ndi_input = input("Do you want to enable NDI output? (0/1) [default: 0]: ").strip()
+use_ndi = bool(int(ndi_input)) if ndi_input else False
+ndi_sender = None
+
+if use_ndi:
+    ndi_name = "PersonBackgroundRemoval"
+    print(f"Creating NDI sender '{ndi_name}'...")
+    ndi_sender = create_ndi_sender(ndi_name, actual_width, actual_height)
+    
+    if ndi_sender:
+        print(f"NDI ready. Look for '{ndi_name}' in NDI-compatible applications (OBS, vMix, etc.)")
+        print("Make sure NDI Tools are installed and firewall allows NDI traffic.")
+    else:
+        print("Failed to initialize NDI. Continuing without NDI output.")
+        use_ndi = False
 
 # Kernel for morphological operations
 kernel = np.ones((5, 5), np.uint8)
@@ -446,6 +464,13 @@ print("  R - Cycle Remove Body modes (Green→Blue→Transparent)")
 print("  +/- - Adjust processing frequency")
 print("\nModes: Keep Body (0-2) | Remove Body (3-5)")
 print("Colors: Green, Blue, Transparent for each category")
+
+if use_syphon:
+    print("\nSyphon: Enabled - Broadcasting to 'PersonBackgroundRemoval'")
+if use_ndi:
+    print("\nNDI: Enabled - Broadcasting to 'PersonBackgroundRemoval'")
+    print("Note: Ensure NDI Tools are installed and firewall allows NDI")
+    
 print("\nStarting camera feed...\n")
 
 # Start the processing thread
@@ -547,7 +572,7 @@ while is_running:
             print(f"Publishing frame {frame_id} to Syphon")
 
         # Adjust publish_frame_to_syphon function call based on mode
-        if bg_mode == 3:
+        if bg_mode in [2, 5]:  # Transparent modes
             # For transparent mode, we need to handle RGBA
             success = publish_frame_to_syphon(
                 display_frame, syphon_server, mtl_device, is_rgba=True)
@@ -557,6 +582,27 @@ while is_running:
 
         if not success and frame_id % 30 == 0:  # Only log failures occasionally
             print("Failed to publish to Syphon")
+    
+    # Publish to NDI
+    if use_ndi and ndi_sender and display_frame is not None:
+        # Only log every 100 frames to avoid console spam
+        if frame_id % 100 == 0:
+            print(f"Publishing frame {frame_id} to NDI")
+        
+        # Calculate current FPS for NDI timing
+        target_fps = min(60, int(avg_fps)) if avg_fps > 0 else 30
+        
+        # Adjust publish_frame_to_ndi function call based on mode
+        if bg_mode in [2, 5]:  # Transparent modes
+            # For transparent mode, we need to handle RGBA
+            success = publish_frame_to_ndi(
+                display_frame, ndi_sender, is_rgba=True, fps=target_fps)
+        else:
+            success = publish_frame_to_ndi(
+                display_frame, ndi_sender, fps=target_fps)
+        
+        if not success and frame_id % 30 == 0:  # Only log failures occasionally
+            print("Failed to publish to NDI")
 
     # Display the frame
     if bg_mode in [2, 5] and display_frame is not None:
@@ -604,5 +650,8 @@ vid.release()
 
 if use_syphon:
     cleanup_syphon(syphon_server)
+
+if use_ndi:
+    cleanup_ndi(ndi_sender)
 
 cv2.destroyAllWindows()
