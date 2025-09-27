@@ -7,3 +7,4 @@ onnx
 onnxruntime
 torch
 torchvision
+# urllib.parse is part of Python standard library (no additional install needed)

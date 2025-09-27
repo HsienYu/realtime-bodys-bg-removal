@@ -5,6 +5,7 @@ A Python application that uses YOLOv8 segmentation models to remove backgrounds 
 
 ## Features
 
+### Standard Version
 - **Real-time processing**: Optimized for smooth real-time video performance
 - **Multiple YOLOv8 models**: Choose from different model sizes based on your hardware capabilities
 - **ONNX support**: Option to convert and use ONNX models for potentially better performance
@@ -12,12 +13,21 @@ A Python application that uses YOLOv8 segmentation models to remove backgrounds 
 - **Multiple output modes**:
   - Green screen
   - Blue screen
-  - Custom color
   - Transparent background (alpha channel)
 - **Multi-person handling**: Intelligently handles multiple people with option to include/exclude space between bodies
 - **Threaded processing**: Uses a separate processing thread to maintain UI responsiveness
 - **Syphon integration**: Output to other applications on macOS like OBS Studio using Syphon
+- **NDI integration**: Network Device Interface support for professional streaming
 - **Performance tuning**: Adjustable processing frequency for balancing quality and performance
+
+### Enhanced Version (app_enhanced.py)
+- **All standard features plus:**
+- **RTSP/RTMP input**: Connect to IP cameras and streaming sources
+- **Video file processing**: Process pre-recorded video files with automatic looping
+- **Custom background images**: Use any image file as background
+- **Original video backgrounds**: Time-delayed background effects
+- **12 background modes**: Extended options including invisibility effects and normal modes
+- **Enhanced streaming**: Better integration with professional streaming workflows
 
 ## Requirements
 
@@ -45,11 +55,26 @@ A Python application that uses YOLOv8 segmentation models to remove backgrounds 
 
 ## Usage
 
-Run the application with:
+### Standard Version
+Run the standard application with:
 
 ```bash
 python app_with_contours_feather.py
 ```
+
+### Enhanced Version (NEW!)
+Run the enhanced version with RTSP support and custom backgrounds:
+
+```bash
+python app_enhanced.py
+```
+
+See [ENHANCED_FEATURES.md](ENHANCED_FEATURES.md) for detailed documentation of the new features including:
+- RTSP/RTMP video input support
+- Custom background images
+- Original video background modes
+- Video file processing
+- 12 total background modes
 
 Follow the interactive prompts to configure the application:
 
