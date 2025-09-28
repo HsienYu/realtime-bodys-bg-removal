@@ -1,0 +1,76 @@
+# Performance Configuration for Real-time Background Removal
+# Adjust these settings to optimize performance for your specific hardware
+
+# General Performance Settings
+target_fps: 30                    # Target frames per second
+adaptive_quality: true            # Enable dynamic quality adjustment
+max_processing_time: 0.033        # Max time per frame (1/30 seconds)
+
+# Frame Processing Optimizations
+downscale_for_inference: true     # Process at lower resolution for inference
+inference_scale: 0.5               # Scale factor for inference (0.5 = 50% resolution)
+skip_frames_when_slow: true       # Skip processing frames when performance drops
+min_processing_interval: 1        # Minimum frames to skip (1 = process every frame)
+max_processing_interval: 5        # Maximum frames to skip when slow
+
+# Model Optimizations
+use_onnx: true                     # Use ONNX for better performance
+use_half_precision: true          # Use FP16 precision (if supported)
+model_warmup_frames: 10           # Number of frames for model warmup
+
+# Image Processing Optimizations
+fast_blur_kernel: 3               # Smaller kernel for faster blur operations
+minimal_morphology: true          # Use minimal morphological operations
+max_feather_amount: 10            # Limit maximum feathering for performance
+
+# Memory Management
+frame_buffer_size: 10             # Size of frame buffers (smaller = less memory)
+background_buffer_size: 15        # Size of background frame buffer
+processing_buffer_size: 10        # Size of processing time buffer
+
+# Threading Optimizations
+processing_timeout: 0.1           # Timeout for processing thread (seconds)
+display_timeout: 0.0167           # Display timeout (1/60 seconds)
+thread_join_timeout: 2.0          # Thread cleanup timeout
+
+# Hardware-Specific Settings (macOS)
+onnx_providers:
+  - 'CoreMLExecutionProvider'      # Apple Silicon optimization
+  - 'CPUExecutionProvider'         # Fallback provider
+
+# Video Capture Optimizations
+buffer_size: 1                    # Camera buffer size (1 = minimal latency)
+preferred_fps: 30                 # Preferred camera FPS
+force_rgb_conversion: true        # Force RGB conversion for consistency
+
+# Performance Monitoring
+fps_sample_size: 10               # Number of frames to average for FPS calculation
+performance_check_interval: 2.0  # Seconds between performance adjustments
+verbose_performance: false       # Print detailed performance metrics
+
+# Quality vs Performance Presets
+# You can override above settings by uncommenting one of these presets:
+
+# Maximum Performance (lowest quality, highest FPS)
+# preset_max_performance:
+#   inference_scale: 0.3
+#   fast_blur_kernel: 1
+#   minimal_morphology: true
+#   max_processing_interval: 3
+#   max_feather_amount: 3
+
+# Balanced (good quality and performance)
+# preset_balanced:
+#   inference_scale: 0.5
+#   fast_blur_kernel: 3
+#   minimal_morphology: true
+#   max_processing_interval: 2
+#   max_feather_amount: 7
+
+# Maximum Quality (highest quality, lower FPS)
+# preset_max_quality:
+#   inference_scale: 0.8
+#   fast_blur_kernel: 5
+#   minimal_morphology: false
+#   max_processing_interval: 1
+#   max_feather_amount: 15

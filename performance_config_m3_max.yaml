@@ -1,0 +1,71 @@
+# MacBook Pro M3 Max Optimized Configuration
+# This configuration is specifically tuned for M3 Max performance
+
+# M3 Max Performance Settings
+target_fps: 60                    # M3 Max can handle 60 FPS easily
+adaptive_quality: true            # Dynamic adjustment
+max_processing_time: 0.0167       # 60 FPS target (1/60 seconds)
+
+# Frame Processing Optimizations for M3 Max
+downscale_for_inference: false    # M3 Max can handle full resolution
+inference_scale: 0.8               # Use 80% resolution for best quality/performance balance
+skip_frames_when_slow: true       # Safety fallback
+min_processing_interval: 1        # Process every frame (M3 Max can handle it)
+max_processing_interval: 2        # Minimal skipping needed
+
+# Model Optimizations for Apple Silicon
+use_onnx: true                     # ONNX with CoreML is faster
+use_half_precision: true          # M3 Max supports FP16 well
+model_warmup_frames: 5            # Quick warmup
+
+# Image Processing Optimizations
+fast_blur_kernel: 5               # M3 Max can handle larger kernels
+minimal_morphology: false         # Use full morphology for quality
+max_feather_amount: 15            # Higher quality feathering
+
+# Memory Management (M3 Max has plenty of memory)
+frame_buffer_size: 30             # Larger buffers for stability
+background_buffer_size: 30        # More background frames
+processing_buffer_size: 30        # Better averaging
+
+# Threading Optimizations
+processing_timeout: 0.05          # Shorter timeout for responsiveness
+display_timeout: 0.0167           # 60 FPS display
+thread_join_timeout: 3.0          # More time for cleanup
+
+# M3 Max Specific ONNX Providers
+onnx_providers:
+  - 'CoreMLExecutionProvider'      # Primary provider for M3 Max
+  - 'CPUExecutionProvider'         # Fallback
+
+# Video Capture Optimizations
+buffer_size: 1                    # Minimal latency
+preferred_fps: 60                 # M3 Max can handle 60 FPS capture
+force_rgb_conversion: true        # Consistent format
+
+# Performance Monitoring
+fps_sample_size: 30               # Larger sample for accuracy
+performance_check_interval: 1.0  # Check more frequently
+verbose_performance: true        # Show detailed metrics
+
+# M3 Max Maximum Performance Preset
+preset_m3_max_performance:
+  target_fps: 60
+  inference_scale: 0.7
+  downscale_for_inference: false
+  fast_blur_kernel: 5
+  minimal_morphology: false
+  max_processing_interval: 1
+  max_feather_amount: 20
+  frame_buffer_size: 30
+
+# M3 Max Maximum Quality Preset (still very fast)
+preset_m3_max_quality:
+  target_fps: 45
+  inference_scale: 1.0
+  downscale_for_inference: false
+  fast_blur_kernel: 7
+  minimal_morphology: false
+  max_processing_interval: 1
+  max_feather_amount: 25
+  frame_buffer_size: 50

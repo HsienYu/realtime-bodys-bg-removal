@@ -7,4 +7,9 @@ onnx
 onnxruntime
 torch
 torchvision
+pyyaml>=6.0.0
 # urllib.parse is part of Python standard library (no additional install needed)
+
+# Performance optimization dependencies
+# onnxruntime-coreml  # Uncomment for Apple Silicon optimization
+# onnxruntime-gpu     # Uncomment for NVIDIA GPU acceleration
