@@ -17,7 +17,7 @@ A Python application that uses YOLOv8 segmentation models to remove backgrounds 
 - **Multi-person handling**: Intelligently handles multiple people with option to include/exclude space between bodies
 - **Threaded processing**: Uses a separate processing thread to maintain UI responsiveness
 - **Syphon integration**: Output to other applications on macOS like OBS Studio using Syphon
-- **NDI integration**: Network Device Interface support for professional streaming
+- **NDI integration**: Network Device Interface support for professional streaming with async frame publishing
 - **Performance tuning**: Adjustable processing frequency for balancing quality and performance
 
 ### Enhanced Version (app_enhanced.py)
@@ -28,22 +28,43 @@ A Python application that uses YOLOv8 segmentation models to remove backgrounds 
 - **Original video backgrounds**: Time-delayed background effects
 - **12 background modes**: Extended options including invisibility effects and normal modes
 - **Enhanced streaming**: Better integration with professional streaming workflows
+- **FP16/MPS optimization**: Automatic Apple Silicon optimization with 2-3x performance boost
+- **Async NDI publishing**: Stable NDI frame transmission with separate publishing thread
+- **Dynamic mode switching**: Cycle through all 12 modes in real-time (press 'M')
+- **Background frame offset control**: Adjust time-delay effect with '[' and ']' keys
+- **Performance configuration**: YAML-based settings for hardware-specific tuning
 
-### M3 Max Performance Optimized Version (app_enhanced_m3_max.py) 🚀 NEW!
+### M3 Max Performance Optimized Version (app_enhanced_m3_max_stable.py) 🚀
 - **All enhanced features plus:**
 - **3-4x Performance Improvement**: From 8 FPS to 25-45+ FPS on MacBook Pro M3 Max
-- **CoreML Acceleration**: Automatic ONNX conversion with Apple Silicon optimization
+- **Reliable PyTorch Optimization**: Proven performance improvements over ONNX
 - **Adaptive Quality Control**: Dynamic frame skipping and quality adjustment
 - **Optimized Threading**: Enhanced multi-threading for M3 Max architecture
-- **Smart Inference Scaling**: Processes at optimal resolution for M3 Max performance
+- **Smart Inference Scaling**: Processes at optimal resolution (60% scale) for M3 Max performance
 - **All 12 Background Modes**: Keep all enhanced features with maximum performance
+- **Conservative FPS Target**: Stable 25 FPS target with bursts up to 40+ FPS
+
+### Split-Screen Version (app_enhanced_split.py) 🎬 NEW!
+- **All enhanced features plus:**
+- **Split-Screen Effects**: Apply effects to left side, right side, or full frame
+- **Real-time Switching**: Toggle between split modes while running (I/O/P keys)
+- **Visual Split Line**: Yellow center line shows split boundary
+- **Creative Effects**: Perfect for before/after comparisons and demonstrations
+- **All 12 Background Modes**: Works with all background effects
+- **Full Integration**: Includes RTSP, video files, Syphon, and NDI support
 
 ## Requirements
 
 - Python 3.7+
 - macOS (for Syphon support)
-- Webcam or other camera input
-- Packages listed in requirements.txt
+- Webcam, IP camera (RTSP/RTMP), or video file input
+- Packages listed in requirements.txt:
+  - numpy, opencv-python, ultralytics (YOLOv8)
+  - syphon-python (macOS Syphon output)
+  - ndi-python (NDI output, requires NDI Tools)
+  - torch, torchvision (YOLO inference)
+  - onnx, onnxruntime (optional, for ONNX acceleration)
+  - pyyaml (configuration files)
 
 ## Installation
 
@@ -82,14 +103,34 @@ python app_enhanced.py
 Run the performance-optimized version with all features plus 3-4x speed improvement:
 
 ```bash
-python app_enhanced_m3_max.py
+python app_enhanced_m3_max_stable.py
 ```
 
 **Expected Performance on M3 Max:**
-- YOLOv8n-seg: 35-45 FPS (vs 23 FPS original)
-- YOLOv8s-seg: 25-35 FPS (vs 16 FPS original)
+- YOLOv8n-seg: 30-40 FPS (vs 8-12 FPS original) ⭐ Recommended
+- YOLOv8s-seg: 20-30 FPS (vs 6-10 FPS original)
+- YOLOv8m-seg: 12-20 FPS (vs 4-8 FPS original)
 - All 12 background modes supported
 - RTSP/RTMP + Video files + Syphon + NDI
+- Stable async NDI publishing at 25 FPS target
+
+### Split-Screen Version (For Creative Effects & Demonstrations) 🎬
+Run the split-screen version for before/after comparisons:
+
+```bash
+python app_enhanced_split.py
+```
+
+**Split-Screen Features:**
+- Press **I**: Effect on LEFT side only (center to left)
+- Press **O**: Effect on RIGHT side only (center to right)  
+- Press **P**: FULL effect (default)
+- Yellow center line shows split boundary
+- Perfect for:
+  - Live demonstrations
+  - Before/after comparisons
+  - Social media content creation
+  - Testing different settings side-by-side
 
 See [ENHANCED_FEATURES.md](ENHANCED_FEATURES.md) for detailed documentation of the features including:
 - RTSP/RTMP video input support
@@ -130,6 +171,11 @@ Follow the interactive prompts to configure the application:
 8. **Syphon output**:
    - Enable Syphon to output to other applications (macOS only)
 
+9. **NDI output**:
+   - Enable NDI for professional streaming over network
+   - Requires NDI Tools installation (https://ndi.video/tools/)
+   - Test NDI setup with: `python test_ndi.py`
+
 ## Keyboard Controls
 
 While the application is running:
@@ -137,14 +183,25 @@ While the application is running:
 - **Q**: Quit the application
 - **H**: Toggle display of information overlay
 - **B**: Toggle inclusion of area between multiple bodies
+- **M**: Cycle through all 12 background modes (in enhanced versions)
+- **1-8**: Direct mode selection hotkeys (in enhanced versions)
 - **+/-**: Increase/decrease processing frequency (lower frequency = higher performance)
+- **[ / ]**: Adjust background frame offset in original background modes (time-delay effect)
+
+**Split-Screen Controls (app_enhanced_split.py only):**
+- **I**: Effect on LEFT side only (center to left)
+- **O**: Effect on RIGHT side only (center to right)
+- **P**: FULL effect across entire frame
 
 ## Performance Tips
 
 - Use smaller models (yolov8n-seg, yolov8s-seg) for better performance
-- Enable ONNX for potential performance gains
+- Enable ONNX with CoreML on Apple Silicon for 2-3x speed boost (automatic in app_enhanced.py)
 - Use the processing frequency control (+/-) to balance quality and performance
 - Run at lower resolutions for better framerates
+- On Apple Silicon, app_enhanced.py automatically uses FP16 and MPS optimization
+- Use `app_enhanced_m3_max_stable.py` for maximum performance on M3 Max
+- Configure hardware-specific settings in `performance_config.yaml` or `performance_config_m3_max.yaml`
 
 ## Syphon Integration
 
@@ -157,19 +214,76 @@ When Syphon is enabled, the output can be used in applications like OBS Studio:
 
 See [SYPHON_SETUP.md](SYPHON_SETUP.md) for detailed instructions.
 
+## NDI Integration
+
+NDI (Network Device Interface) allows professional streaming over network:
+
+1. Install NDI Tools from https://ndi.video/tools/
+2. Install Python package: `pip install ndi-python`
+3. Test NDI setup: `python test_ndi.py`
+4. Enable NDI when prompted in the application
+5. Look for "PersonBackgroundRemoval" in NDI-compatible apps (OBS, vMix, etc.)
+
+**Features:**
+- Async frame publishing for stable transmission
+- Automatic BGRA format conversion
+- Queue management to prevent frame backup
+- Performance statistics logging
+- Supports both RGB and RGBA (transparent) modes
+
+## Performance Configuration
+
+The application includes YAML configuration files for hardware-specific tuning:
+
+### General Configuration (`performance_config.yaml`)
+- Balanced settings for most hardware
+- Adaptive quality control
+- 30 FPS target
+
+### M3 Max Configuration (`performance_config_m3_max.yaml`)
+- Optimized for Apple M3 Max chips
+- 60 FPS target
+- Larger buffers for stability
+- CoreML execution provider
+
+**Settings Tool:**
+```bash
+python optimize_settings.py
+```
+Generates recommended configuration based on your use case.
+
 ## Troubleshooting
 
 - **Low FPS**: Try a smaller model, lower resolution, or increase the processing interval
-- **Poor segmentation**: Try a larger model (yolov8m-seg, yolov8l-seg) or adjust confidence
+- **Poor segmentation**: Try a larger model (yolov8m-seg, yolov8l-seg) or adjust confidence (try 0.3)
 - **Edge artifacts**: Increase the feathering amount for smoother edges
 - **Syphon not working**: Ensure you have the correct plugins installed in the receiving application
+- **NDI not working**: Run `python test_ndi.py` to verify installation
+- **Incomplete background replacement**: Lower confidence threshold to 0.3 and try yolov8m-seg model
+- **H.264 codec warnings (RTSP)**: These are usually harmless; try adding `?tcp` to RTSP URL if issues persist
+- **On Apple Silicon**: app_enhanced.py automatically uses MPS and FP16 for 2-3x performance boost
 
 ## License
 
 0x5a@pimiya.rocks
+
+## Documentation
+
+- [ENHANCED_FEATURES.md](ENHANCED_FEATURES.md) - Detailed documentation of enhanced features
+- [FP16_MPS_OPTIMIZATION.md](FP16_MPS_OPTIMIZATION.md) - Apple Silicon optimization guide
+- [SYPHON_SETUP.md](SYPHON_SETUP.md) - Syphon configuration guide
+- `performance_config.yaml` - General performance settings
+- `performance_config_m3_max.yaml` - M3 Max specific settings
+
+## Testing Tools
+
+- `test_ndi.py` - Test NDI installation and functionality
+- `optimize_settings.py` - Generate optimal configuration recommendations
+- `rtsp_test.py` - Test RTSP stream connections
 
 ## Acknowledgements
 
 - [Ultralytics YOLOv8](https://github.com/ultralytics/ultralytics)
 - [OpenCV](https://opencv.org/)
 - [Syphon Project](https://syphon.github.io/)
+- [NDI by NewTek](https://ndi.video/)

@@ -1,8 +1,8 @@
 """
-Enhanced version of app_with_contours_feather.py that adds:
-1. RTSP video input support
-2. Normal background functionality (custom background images and original feed)
-3. All existing features maintained
+Enhanced Split-Screen version that adds:
+1. Split-screen effects control (left/right/full)
+2. All features from app_enhanced.py maintained
+3. New hotkeys: i (left effect), o (right effect), p (full effect)
 """
 import os
 import random
@@ -340,7 +340,7 @@ use_syphon = bool(int(syphon_input)) if syphon_input else False
 syphon_server, mtl_device = None, None
 
 if use_syphon:
-    syphon_name = "PersonBackgroundRemoval"
+    syphon_name = "PersonBackgroundRemovalSplit"
     print(f"Creating Syphon server '{syphon_name}'...")
     syphon_server, mtl_device = create_syphon_server(syphon_name)
 
@@ -358,7 +358,7 @@ use_ndi = bool(int(ndi_input)) if ndi_input else False
 ndi_sender = None
 
 if use_ndi:
-    ndi_name = "PersonBackgroundRemoval"
+    ndi_name = "PersonBackgroundRemovalSplit"
     print(f"Creating NDI sender '{ndi_name}'...")
     ndi_sender = create_ndi_sender(ndi_name, actual_width, actual_height)
 
@@ -379,6 +379,9 @@ frame_id = 0
 show_indicators = False
 include_area_between = True
 
+# Split screen mode: "full", "left", "right"
+split_mode = "full"
+
 # Performance optimization variables
 skip_frames = 0
 process_every_n_frames = 1
@@ -395,7 +398,6 @@ frame_ready = threading.Event()
 processing_done = threading.Event()
 
 # NDI stable transmission variables
-# Small buffer to prevent backup but ensure stability
 ndi_frame_queue = deque(maxlen=5)
 ndi_frame_ready = threading.Event()
 ndi_lock = threading.Lock()
@@ -426,6 +428,61 @@ def get_background_frame(original_frame):
     else:
         # Fallback
         return original_frame.copy()
+
+
+def apply_split_effect(original_frame, processed_frame, split_mode):
+    """Apply split-screen effect based on the current mode"""
+    height, width = original_frame.shape[:2]
+    center_x = width // 2
+
+    # Handle both RGB and RGBA frames
+    is_rgba = len(processed_frame.shape) == 3 and processed_frame.shape[2] == 4
+
+    if split_mode == "full":
+        # Full effect - return processed frame as-is
+        return processed_frame
+
+    elif split_mode == "left":
+        # Effect only on left side (center to left)
+        if is_rgba:
+            result = np.zeros((height, width, 4), dtype=np.uint8)
+            result[:, :center_x] = processed_frame[:,
+                                                   :center_x]  # Left: effect
+            # Right: original with full alpha
+            result[:, center_x:, :3] = original_frame[:, center_x:]
+            result[:, center_x:, 3] = 255
+        else:
+            result = original_frame.copy()
+            result[:, :center_x] = processed_frame[:,
+                                                   :center_x]  # Left: effect
+            # Right side stays original
+
+        # Draw center line
+        line_color = (255, 255, 0) if not is_rgba else (255, 255, 0, 255)
+        cv2.line(result, (center_x, 0), (center_x, height), line_color, 2)
+        return result
+
+    elif split_mode == "right":
+        # Effect only on right side (center to right)
+        if is_rgba:
+            result = np.zeros((height, width, 4), dtype=np.uint8)
+            # Left: original with full alpha
+            result[:, :center_x, :3] = original_frame[:, :center_x]
+            result[:, :center_x, 3] = 255
+            result[:, center_x:] = processed_frame[:,
+                                                   center_x:]  # Right: effect
+        else:
+            result = original_frame.copy()
+            result[:, center_x:] = processed_frame[:,
+                                                   center_x:]  # Right: effect
+            # Left side stays original
+
+        # Draw center line
+        line_color = (255, 255, 0) if not is_rgba else (255, 255, 0, 255)
+        cv2.line(result, (center_x, 0), (center_x, height), line_color, 2)
+        return result
+
+    return processed_frame
 
 
 def process_frame(frame, process_id):
@@ -549,6 +606,10 @@ def process_frame(frame, process_id):
     # Flip horizontally for natural view (except for RTSP streams)
     if input_type == 0:  # Only flip for physical cameras
         output_frame = cv2.flip(output_frame, 1)
+        frame = cv2.flip(frame, 1)
+
+    # Apply split-screen effect
+    output_frame = apply_split_effect(frame, output_frame, split_mode)
 
     proc_time = time.time() - start_proc_time
     processing_times.append(proc_time)
@@ -599,7 +660,6 @@ def ndi_publishing_thread():
             current_time = time.time()
 
             # Wait for frames or timeout to check is_running
-            # Shorter timeout for responsive cleanup
             if ndi_frame_ready.wait(timeout=0.05):
                 ndi_frame_ready.clear()
 
@@ -669,7 +729,7 @@ def update_background_color():
 
 def handle_keys(key):
     """Handle keyboard inputs"""
-    global show_indicators, include_area_between, is_running, process_every_n_frames, bg_mode, background_frame_offset
+    global show_indicators, include_area_between, is_running, process_every_n_frames, bg_mode, background_frame_offset, split_mode
 
     if key == -1:
         return False
@@ -699,45 +759,49 @@ def handle_keys(key):
         }
         print(f"Switched to mode: {mode_names[bg_mode]}")
     elif key == ord('1'):
-        # Keep Body - Green BG (mode 0)
         bg_mode = 0
         update_background_color()
         print("Switched to mode: Keep Body - Green BG")
     elif key == ord('2'):
-        # Keep Body - Blue BG (mode 1)
         bg_mode = 1
         update_background_color()
         print("Switched to mode: Keep Body - Blue BG")
     elif key == ord('3'):
-        # Keep Body - Transparent BG (mode 2)
         bg_mode = 2
         update_background_color()
         print("Switched to mode: Keep Body - Transparent BG")
     elif key == ord('4'):
-        # Keep Body - Original BG (mode 4)
         bg_mode = 4
         update_background_color()
         print("Switched to mode: Keep Body - Original BG")
     elif key == ord('5'):
-        # Remove Body - Green Fill (mode 6)
         bg_mode = 6
         update_background_color()
         print("Switched to mode: Remove Body - Green Fill")
     elif key == ord('6'):
-        # Remove Body - Blue Fill (mode 7)
         bg_mode = 7
         update_background_color()
         print("Switched to mode: Remove Body - Blue Fill")
     elif key == ord('7'):
-        # Remove Body - Transparent Area (mode 8)
         bg_mode = 8
         update_background_color()
         print("Switched to mode: Remove Body - Transparent Area")
     elif key == ord('8'):
-        # Remove Body - Original BG (mode 10)
         bg_mode = 10
         update_background_color()
         print("Switched to mode: Remove Body - Original BG")
+    elif key == ord('i'):
+        # Split mode: effect on left side only (center to left)
+        split_mode = "left"
+        print("Split mode: Effect on LEFT side (center to left)")
+    elif key == ord('o'):
+        # Split mode: effect on right side only (center to right)
+        split_mode = "right"
+        print("Split mode: Effect on RIGHT side (center to right)")
+    elif key == ord('p'):
+        # Full effect (default)
+        split_mode = "full"
+        print("Split mode: FULL effect")
     elif key == ord('+') or key == ord('='):
         process_every_n_frames = max(1, process_every_n_frames - 1)
         print(
@@ -747,7 +811,6 @@ def handle_keys(key):
         print(
             f"Processing frequency decreased: Every {process_every_n_frames} frame(s)")
     elif key == ord(']'):
-        # Increase background frame offset (only in original background modes)
         if bg_mode in [4, 10]:
             background_frame_offset = min(29, background_frame_offset + 1)
             print(
@@ -756,7 +819,6 @@ def handle_keys(key):
             print(
                 "Background frame offset only works in Original Background modes (4, 10)")
     elif key == ord('['):
-        # Decrease background frame offset (only in original background modes)
         if bg_mode in [4, 10]:
             background_frame_offset = max(1, background_frame_offset - 1)
             print(
@@ -769,8 +831,9 @@ def handle_keys(key):
 
 
 # Print startup information
-print("\n=== Enhanced Real-time Body Background Removal ===")
+print("\n=== Enhanced Real-time Body Background Removal - SPLIT SCREEN VERSION ===")
 print("New Features:")
+print("  - Split-screen effects control")
 print("  - RTSP/RTMP stream support")
 print("  - Custom background images")
 print("  - Original video background mode")
@@ -778,8 +841,12 @@ print("\nKeyboard Controls:")
 print("  Q - Quit application")
 print("  H - Hide/show info overlay")
 print("  B - Toggle area between bodies mode")
-print("  M - Cycle through all modes (0→1→2→3→4→5→6→7→8)")
+print("  M - Cycle through all modes")
 print("  +/- - Adjust processing frequency")
+print("\nSplit Screen Controls (NEW!):")
+print("  I - Effect on LEFT side only (center to left)")
+print("  O - Effect on RIGHT side only (center to right)")
+print("  P - FULL effect (default)")
 print("\nDirect Mode Hotkeys:")
 print("  1 - Keep Body - Green BG")
 print("  2 - Keep Body - Blue BG")
@@ -793,20 +860,18 @@ print("\nBackground Frame Controls (Original BG modes only):")
 print("  ] - Increase background frame offset (older frames)")
 print("  [ - Decrease background frame offset (newer frames)")
 print("\nModes: Keep Body (0-5) | Remove Body (6-11)")
-print("Keep Body: 0: Green, 1: Blue, 2: Transparent, 3: Custom Image, 4: Original, 5: Normal")
-print("Remove Body: 6: Green Fill, 7: Blue Fill, 8: Transparent, 9: Custom Image, 10: Original, 11: Normal")
 
 if use_syphon:
-    print("\nSyphon: Enabled - Broadcasting to 'PersonBackgroundRemoval'")
+    print("\nSyphon: Enabled - Broadcasting to 'PersonBackgroundRemovalSplit'")
 if use_ndi:
-    print("\nNDI: Enabled - Broadcasting to 'PersonBackgroundRemoval'")
+    print("\nNDI: Enabled - Broadcasting to 'PersonBackgroundRemovalSplit'")
 
 print("\nStarting video feed...\n")
 
 # Start the processing thread
-processing_thread = threading.Thread(target=processing_thread)
-processing_thread.daemon = True
-processing_thread.start()
+processing_thread_obj = threading.Thread(target=processing_thread)
+processing_thread_obj.daemon = True
+processing_thread_obj.start()
 
 # Start NDI publishing thread if NDI is enabled
 ndi_thread = None
@@ -827,11 +892,10 @@ while is_running:
         if input_type == 1:  # RTSP stream - try to reconnect
             print("RTSP connection lost, attempting to reconnect...")
             vid.release()
-            time.sleep(1)  # Wait a moment before reconnecting
+            time.sleep(1)
             vid = cv2.VideoCapture(video_source)
             vid = configure_rtsp_capture(vid, is_rtsp=True)
 
-            # Try to read again after reconnection
             ret, frame = vid.read()
             if not ret:
                 print("Failed to reconnect to RTSP stream")
@@ -839,8 +903,8 @@ while is_running:
             else:
                 print("RTSP reconnection successful")
 
-        elif input_type == 2:  # Video file - loop or exit
-            vid.set(cv2.CAP_PROP_POS_FRAMES, 0)  # Loop back to beginning
+        elif input_type == 2:  # Video file - loop
+            vid.set(cv2.CAP_PROP_POS_FRAMES, 0)
             continue
         else:
             print("Failed to capture frame from camera")
@@ -896,23 +960,22 @@ while is_running:
             9: "Remove Body - Custom BG", 10: "Remove Body - Original BG", 11: "Remove Body - Normal"
         }
 
+        split_mode_display = {"full": "Full", "left": "Left", "right": "Right"}
+
         if bg_mode not in [2, 8]:  # Non-transparent modes
             text_color = (255, 255, 255) if bg_mode >= 5 else (50, 170, 50)
 
-            cv2.putText(display_frame, f"Mode: {mode_names.get(bg_mode, 'Unknown')} | FPS: {round(avg_fps, 1)} (Proc: {round(avg_proc_time, 1)}ms)",
+            cv2.putText(display_frame, f"Mode: {mode_names.get(bg_mode, 'Unknown')} | Split: {split_mode_display[split_mode]} | FPS: {round(avg_fps, 1)}",
                         (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2)
-            cv2.putText(display_frame, f"Input: {'Camera' if input_type == 0 else 'RTSP/Stream' if input_type == 1 else 'Video File'} | Person: {'Yes' if person_detected else 'No'}",
+            cv2.putText(display_frame, f"Person: {'Yes' if person_detected else 'No'} | Proc: {round(avg_proc_time, 1)}ms",
                         (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2)
-            cv2.putText(display_frame, f"Area between: {'On' if include_area_between else 'Off'} | Feather: {feather_amount} | Conf: {conf_threshold}",
+            cv2.putText(display_frame, f"Area: {'On' if include_area_between else 'Off'} | Feather: {feather_amount} | Conf: {conf_threshold}",
                         (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2)
-            cv2.putText(display_frame, "Q: quit | H: hide | B: area | M: cycle | 1-8: modes | +/-: freq | []: bg offset",
+            cv2.putText(display_frame, "I: Left | O: Right | P: Full | 1-8: modes | H: hide",
                         (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_color, 2)
 
     # Publish to Syphon
     if use_syphon and syphon_server and mtl_device and display_frame is not None:
-        if frame_id % 100 == 0:
-            print(f"Publishing frame {frame_id} to Syphon")
-
         if bg_mode in [2, 8]:
             success = publish_frame_to_syphon(
                 display_frame, syphon_server, mtl_device, is_rgba=True)
@@ -920,24 +983,18 @@ while is_running:
             success = publish_frame_to_syphon(
                 display_frame, syphon_server, mtl_device)
 
-        if not success and frame_id % 30 == 0:
-            print("Failed to publish to Syphon")
-
     # Queue frame for stable NDI publishing
     if use_ndi and ndi_sender and display_frame is not None:
         is_transparent = bg_mode in [2, 8]
 
-        # Try to add to queue without blocking
         if ndi_lock.acquire(blocking=False):
             try:
-                # Add to queue if not full
                 if len(ndi_frame_queue) < ndi_frame_queue.maxlen:
                     ndi_frame_queue.append(
                         (display_frame.copy(), is_transparent))
                     ndi_frame_ready.set()
                 else:
-                    # Queue is full - replace oldest frame to maintain freshness
-                    ndi_frame_queue.clear()  # Clear to prevent backup
+                    ndi_frame_queue.clear()
                     ndi_frame_queue.append(
                         (display_frame.copy(), is_transparent))
                     ndi_stats['queue_full'] += 1
@@ -968,9 +1025,9 @@ while is_running:
             display_frame_rgb = display_frame[:, :, :3]
             preview = checker_frame * (1 - alpha) + (display_frame_rgb * alpha)
             preview = preview.astype(np.uint8)
-            cv2.imshow('Enhanced Person Background Removal', preview)
+            cv2.imshow('Split-Screen Background Removal', preview)
     elif display_frame is not None:
-        cv2.imshow('Enhanced Person Background Removal', display_frame)
+        cv2.imshow('Split-Screen Background Removal', display_frame)
 
     # Frame rate control
     frame_time = time.time() - frame_start_time
@@ -982,17 +1039,15 @@ print("\nShutting down...")
 is_running = False
 
 # Clean up processing thread
-processing_thread.join(timeout=1.0)
-if processing_thread.is_alive():
+processing_thread_obj.join(timeout=1.0)
+if processing_thread_obj.is_alive():
     print("Warning: Processing thread did not terminate cleanly")
 
 # Clean up NDI thread properly
 if use_ndi and ndi_thread:
     print("Stopping NDI thread...")
-    # Signal thread to wake up and check is_running
     ndi_frame_ready.set()
 
-    # Wait for thread to terminate
     ndi_thread.join(timeout=2.0)
     if ndi_thread.is_alive():
         print("Warning: NDI thread did not terminate cleanly")
